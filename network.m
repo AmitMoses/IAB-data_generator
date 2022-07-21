@@ -195,10 +195,15 @@ classdef network
            t_str(t_idx_BS) = t_val_BS_str;
            t_str(t_idx_IAB) = t_val_IAB_str;
            
+           % Gnerate graph
            G = digraph(s_str,t_str,Weight);
            G_id = digraph(s,t,Weight);
            G_id.Edges.CQI = G_id.Edges.Weight;
-           G_id.Edges.Weight = CQI2SNR(end,1) - G_id.Edges.Weight + 1;
+           G_id.Edges.SNR_delay = CQI2SNR(end,1) - G_id.Edges.Weight + 1;
+           G_id.Edges.queue_delay = zeros(length(G_id.Edges.EndNodes),1);
+%            net.Topology.Edges.SNR_delay = CQI2SNR(net.Topology.Edges.CQI+1,2);
+%            G_id.Edges.Weight = CQI2SNR(end,1) - G_id.Edges.Weight + 1;
+           G_id.Edges.Weight = G_id.Edges.SNR_delay + G_id.Edges.queue_delay;
            G_id.Edges.Capacity = zeros(size(G_id.Edges.Weight));
            
            % locations node features
@@ -238,6 +243,7 @@ classdef network
             DataMatrix(end,floor(1:Ue_Num/4)) = 2;
             DataMatrix(end,floor(Ue_Num/4+1:Ue_Num)) = 0.5;
        end
+       
        
        %% branch capacity calculation
        function obj = Datapath(obj,UnitNum)
@@ -288,6 +294,69 @@ classdef network
             end
 %             obj.Topology.Edges.Capacity = obj.Topology.Edges.Capacity + Load*sum(double(data_capacity_matrix > 0),2); 
 %             obj.Topology.Edges.Capacity = obj.Topology.Edges.Capacity + sum(double(data_capacity_matrix),2); 
+       end
+       
+              %% Update wights
+       function obj = update_weights(obj)
+           obj.Topology.Edges.Weight = obj.Topology.Edges.SNR_delay + obj.Topology.Edges.queue_delay;
+       end
+              %% branch capacity calculation
+       function obj = Random_Datapath(obj,UnitNum)
+           % This function find all the paths from the senders to recivers
+           % and update the load on the Graph Object on the Topology field 
+           % of the network. The data that each user send is equal to all
+           % recivers, so the function use 'Minimum Spanning Tree' for load
+           % calculation
+
+            global IABnode_num
+            global IABdonor_Num
+            DataMatrix = DataGenerator(obj,UnitNum);
+            [Senders, Recivers] = find(DataMatrix);
+            p = randperm(length(Senders));  % permutation vector
+            Senders = Senders(p);
+            Recivers = Recivers(p);
+            data_capacity_matrix = zeros(size(obj.Topology.Edges.EndNodes,1),UnitNum);
+            allDataPaths  = NaN(length(Senders),IABdonor_Num + IABnode_num);
+            
+            % Delete overflow nodes -- old version note that its need improvment 
+            Delete_Senders = find(Senders>size(obj.Topology.Nodes,1));
+            Delete_Recivers = find(Recivers>size(obj.Topology.Nodes,1));
+            Delete_vector = ([Delete_Senders ;Delete_Recivers]);
+            Senders(Delete_vector) = [];
+            Recivers(Delete_vector) = [];
+            
+            for link = 1:length(Senders)
+                % shotrstpath:      'unweighted' - Breadth-First compution
+                %                   that treat all edge weights as 1
+                %                   'positive' - use Dijkstra algorithem to
+                %                   find the shortest path
+               path = shortestpath(obj.Topology, Senders(link), Recivers(link),'Method','positive');
+               allDataPaths(link, 1:length(path)) = path;
+               
+               % Get a path and place the load (data) on all the roads in
+               % the Graph Object. Make a node-to-node matrix that each row
+               % represent a raod in the path 
+               path(isempty(path)) = 0; % if there is no connection set 0 (insted of [])
+               x1 = repelem(path,2); % replicate the vector elements
+               if length(x1(2:end-1)) > 2
+                    v2 = reshape(x1(2:end-1),2,[]).';
+               else
+                    v2 = x1(2:end-1);
+               end
+               sort_edges = v2;
+               ai = find(ismember(obj.Topology.Edges.EndNodes, sort_edges,'rows'));
+               obj.Topology.Edges.Capacity(ai) = obj.Topology.Edges.Capacity(ai) + DataMatrix(Senders(link),Recivers(link));
+               
+               % add queue
+               allocate_BW = 50e6;  %Hz
+               RB_BW = 180e3;       % Hz
+               num_RB = allocate_BW/RB_BW;
+               packet_size = 100e3; %[bps]
+               massage_size = obj.Topology.Edges.Capacity(ai) * 1e6; % [bps] 
+               queue_length = massage_size / packet_size;
+               obj.Topology.Edges.queue_delay(ai) = obj.Topology.Edges.queue_delay(ai) + queue_length/num_RB;
+               obj = update_weights(obj);
+            end
        end
    end
 end

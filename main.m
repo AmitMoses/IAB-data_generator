@@ -153,7 +153,10 @@ for iter = 1:MaxIterations
         hops = length(path_to_BS) - 1;
         net.users(UE_idx).hops = hops;
     end
-    net = Datapath(net, UnitNum);
+    net = Random_Datapath(net, UnitNum);
+%     net = Datapath(net, UnitNum);
+    
+    
 
 
     % %% TDD schduling
