@@ -128,6 +128,7 @@ classdef network
                
                connected_BS = [obj.IABnodes(index).UE.BS_con_id];
                Service_UE = [obj.IABnodes(index).UE.ID];
+               Service_UE = repelem(Service_UE,length(connected_BS));
                
                CQI_DL = obj.IABnodes(index).gNB.UE_con_CQI;
                CQI_UL = obj.IABnodes(index).UE.BS_con_CQI;
@@ -300,6 +301,7 @@ classdef network
        function obj = update_weights(obj)
            obj.Topology.Edges.Weight = obj.Topology.Edges.SNR_delay + obj.Topology.Edges.queue_delay;
        end
+       
               %% branch capacity calculation
        function obj = Random_Datapath(obj,UnitNum)
            % This function find all the paths from the senders to recivers
@@ -315,7 +317,7 @@ classdef network
             p = randperm(length(Senders));  % permutation vector
             Senders = Senders(p);
             Recivers = Recivers(p);
-            data_capacity_matrix = zeros(size(obj.Topology.Edges.EndNodes,1),UnitNum);
+%             data_capacity_matrix = zeros(size(obj.Topology.Edges.EndNodes,1),UnitNum);
             allDataPaths  = NaN(length(Senders),IABdonor_Num + IABnode_num);
             
             % Delete overflow nodes -- old version note that its need improvment 

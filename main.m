@@ -8,6 +8,10 @@ global IABdonor_Num
 global CQI2SNR
 
 %% Flags
+IAB_backhaul_method = 2;    % 0 -   Direct connection to the IAB-Donor
+                            % 1 -   Multi hop to the IAB-Donor
+                            % 2 -   Mesh conectivity / multipule backhaul
+                            %       connections
 hop_1_IAB = 0;
 GenerateDatabase = 0; 
 GenerateGraphData = 0;
@@ -20,7 +24,7 @@ MaxIterations = 1;
 %% Simulation Parameters:
 IABnode_num = 9;
 IABdonor_Num = 1;
-Ue_Num = (IABnode_num+IABdonor_Num)*10;
+Ue_Num = (IABnode_num+IABdonor_Num)*1;
 % Ue_Num = (IABnode_num+IABdonor_Num);
 UnitNum = Ue_Num + IABnode_num + IABdonor_Num;
 BS_frequncy = [ 3.9e9 ]*( ones(1,IABdonor_Num+IABnode_num) ) ;
@@ -52,8 +56,9 @@ CQI2SNR = [
 
 
 %% Network Calibration
-UE_database = zeros(MaxIterations,(IABnode_num+IABdonor_Num)*5);
-IAB_database = zeros(MaxIterations,(IABnode_num+IABdonor_Num)*5);
+num_of_features = 5;
+UE_database = zeros(MaxIterations,(IABnode_num+IABdonor_Num)*num_of_features);
+IAB_database = zeros(MaxIterations,(IABnode_num+IABdonor_Num)*num_of_features);
 tic
 for iter = 1:MaxIterations
 
@@ -99,23 +104,38 @@ for iter = 1:MaxIterations
     %% Network connections
     % calculate Path Loss between all users to BS (Network object method)
     % [Pathloss_Matrix_ue2allBS] = Pathloss_calculation(net,'ABG');
-    [Pathloss_Matrix_ue2allBS] = Pathloss_calculation(net,'Free-Space');
-    Pathloss_Matrix_ue2BS = Pathloss_Matrix_ue2allBS(IABnode_num+IABdonor_Num:end,1:Ue_Num);
-    Pathloss_Matrix_ue2IAB = Pathloss_Matrix_ue2allBS(1:IABnode_num,1:Ue_Num);
-    Pathloss_Matrix_IAB2BS = Pathloss_Matrix_ue2allBS(IABnode_num+IABdonor_Num:end,Ue_Num+1:end);
-    Pathloss_Matrix_IAB2IAB = Pathloss_Matrix_ue2allBS(1:IABnode_num , Ue_Num+1:end);
+    [Pathloss_Matrix_ue2iab] = Pathloss_calculation(net,'Free-Space');
+    Pathloss_Matrix_ue2donor = Pathloss_Matrix_ue2iab(IABnode_num+IABdonor_Num:end,1:Ue_Num);
+    Pathloss_Matrix_ue2node = Pathloss_Matrix_ue2iab(1:IABnode_num,1:Ue_Num);
+    Pathloss_Matrix_node2donor = Pathloss_Matrix_ue2iab(IABnode_num+IABdonor_Num:end,Ue_Num+1:end);
+    Pathloss_Matrix_node2node = Pathloss_Matrix_ue2iab(1:IABnode_num , Ue_Num+1:end);
+    Pathloss_Matrix_iab2iab = Pathloss_Matrix_ue2iab(1:end , Ue_Num+1:end);
+
 
     
 
     % IAB search for best BS to connect
     for UE_idx=1:IABnode_num
         % IAB establish connection with BS
-        if hop_1_IAB == 1
+        % UE-class
+        if IAB_backhaul_method == 0
             [net] =...
-            Connect2BS(net.IABnodes(UE_idx).UE, net, Pathloss_Matrix_IAB2BS(:,UE_idx), inf ,1); 
-        else
+            Connect2BS(net.IABnodes(UE_idx).UE, net, Pathloss_Matrix_node2donor(:,UE_idx), inf ,1); 
+        elseif IAB_backhaul_method == 1
             [net] =...
-            Connect2BS(net.IABnodes(UE_idx).UE, net, Pathloss_Matrix_IAB2BS(:,UE_idx), Pathloss_Matrix_IAB2IAB(:,UE_idx) ,1); 
+            Connect2BS(net.IABnodes(UE_idx).UE, net, Pathloss_Matrix_node2donor(:,UE_idx), Pathloss_Matrix_node2node(:,UE_idx) ,1); 
+        elseif IAB_backhaul_method == 2
+            [net] =...
+            Connect2BS(net.IABnodes(UE_idx).UE, net, Pathloss_Matrix_node2donor(:,UE_idx), inf ,1); 
+%             [net] =...
+%             Connect2BS(net.IABnodes(UE_idx).UE, net, inf, Pathloss_Matrix_node2node(:,UE_idx) ,1); 
+        end
+    end
+    
+    if IAB_backhaul_method == 2
+        for UE_idx=1:IABnode_num
+            [net] =...
+            Connect2BS(net.IABnodes(UE_idx).UE, net, inf, Pathloss_Matrix_node2node(:,UE_idx) ,1); 
         end
     end
 
@@ -123,25 +143,25 @@ for iter = 1:MaxIterations
     for UE_idx=1:Ue_Num
         % UE establish connection with BS
         [net] =...
-            Connect2BS(net.users(UE_idx), net, Pathloss_Matrix_ue2BS(:,UE_idx), Pathloss_Matrix_ue2IAB(:,UE_idx),0); 
+            Connect2BS(net.users(UE_idx), net, Pathloss_Matrix_ue2donor(:,UE_idx), Pathloss_Matrix_ue2node(:,UE_idx),0); 
     end
     
     % BS establish connection with UE
     for BS_idx1 = 1:IABdonor_Num
             net.IABdonors(BS_idx1) =...
-            Connect2UE(net.IABdonors(BS_idx1),[net.users net.IABnodes.UE] , Pathloss_Matrix_ue2allBS(BS_idx1 + length(net.IABnodes),:),CQI2SNR);
+            Connect2UE(net.IABdonors(BS_idx1),[net.users net.IABnodes.UE] , Pathloss_Matrix_ue2iab(BS_idx1 + length(net.IABnodes),:),CQI2SNR);
     end
 
     % IAB establish connection with UE
     for IAB_idx = 1:IABnode_num
         net.IABnodes(IAB_idx).gNB =...
-            Connect2UE(net.IABnodes(IAB_idx).gNB, [net.users net.IABnodes.UE] , Pathloss_Matrix_ue2allBS(IAB_idx,:),CQI2SNR);
+            Connect2UE(net.IABnodes(IAB_idx).gNB, [net.users net.IABnodes.UE] , Pathloss_Matrix_ue2iab(IAB_idx,:),CQI2SNR);
     end
     
     
     % Plot all units locations & Network Topology
     if MaxIterations == 1
-        plot_network_location(net)
+%         plot_network_location(net)
         plot_network_topology(net);
     end
     
@@ -153,8 +173,8 @@ for iter = 1:MaxIterations
         hops = length(path_to_BS) - 1;
         net.users(UE_idx).hops = hops;
     end
-    net = Random_Datapath(net, UnitNum);
-%     net = Datapath(net, UnitNum);
+%     net = Random_Datapath(net, UnitNum);
+    net = Datapath(net, UnitNum);
     
     
 
