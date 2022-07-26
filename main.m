@@ -6,15 +6,15 @@ global Ue_Num
 global IABnode_num
 global IABdonor_Num
 global CQI2SNR
+global max_bachaul_num
 
 %% Flags
 IAB_backhaul_method = 2;    % 0 -   Direct connection to the IAB-Donor
                             % 1 -   Multi hop to the IAB-Donor
                             % 2 -   Mesh conectivity / multipule backhaul
                             %       connections
-hop_1_IAB = 0;
-GenerateDatabase = 0; 
-GenerateGraphData = 0;
+GenerateDatabase = 1; 
+GenerateGraphData = 1;
 
 %% Iteration's number
 % MaxIterations = 10000;
@@ -24,7 +24,7 @@ MaxIterations = 1;
 %% Simulation Parameters:
 IABnode_num = 9;
 IABdonor_Num = 1;
-Ue_Num = (IABnode_num+IABdonor_Num)*1;
+Ue_Num = (IABnode_num+IABdonor_Num)*10;
 % Ue_Num = (IABnode_num+IABdonor_Num);
 UnitNum = Ue_Num + IABnode_num + IABdonor_Num;
 BS_frequncy = [ 3.9e9 ]*( ones(1,IABdonor_Num+IABnode_num) ) ;
@@ -57,8 +57,9 @@ CQI2SNR = [
 
 %% Network Calibration
 num_of_features = 5;
+max_bachaul_num = 2;
 UE_database = zeros(MaxIterations,(IABnode_num+IABdonor_Num)*num_of_features);
-IAB_database = zeros(MaxIterations,(IABnode_num+IABdonor_Num)*num_of_features);
+IAB_database = zeros(MaxIterations,(IABnode_num*max_bachaul_num+IABdonor_Num)*num_of_features);
 tic
 for iter = 1:MaxIterations
 
@@ -173,10 +174,8 @@ for iter = 1:MaxIterations
         hops = length(path_to_BS) - 1;
         net.users(UE_idx).hops = hops;
     end
-%     net = Random_Datapath(net, UnitNum);
-    net = Datapath(net, UnitNum);
-    
-    
+    net = Random_Datapath(net, UnitNum);
+%     net = Datapath(net, UnitNum);
 
 
     % %% TDD schduling
@@ -200,85 +199,82 @@ for iter = 1:MaxIterations
         UE_database(iter,i*5+5) = net.Topology.Edges.CQI(idxUL);          % UL_CQI
     end
     
-    % saving IABnodes database into IAB_database matrix
+    % saving IAB-Nodes database into IAB_database matrix
     for i=0:IABnode_num -1
          IABnode_ID = net.IABnodes(i+1).ID;
          connected_gNB = net.IABnodes(i+1).UE.BS_con_id;
+        
+         for backhaul_idx = 0:length(connected_gNB)-1
+             index = 5*(i*max_bachaul_num + backhaul_idx);
+             backhaul = connected_gNB(backhaul_idx + 1);
+             idxDL = find(ismember(net.Topology.Edges.EndNodes, [backhaul, IABnode_ID],'rows'));
+             idxUL = find(ismember(net.Topology.Edges.EndNodes, [IABnode_ID, backhaul],'rows'));
+             
+            if isnan(net.IABnodes(i+1).UE.BS_con_id) 
+                IAB_database(iter,index+1) = 0;
+            else
+                IAB_database(iter,index+1) = net.IABnodes(i+1).UE.BS_con_id(backhaul_idx + 1);          % Connected BS
+            end
 
-%          idxDL = intersect(...
-%             find(net.Topology.Edges.EndNodes(:,1) > Ue_Num ),...
-%             find(net.Topology.Edges.EndNodes(:,2) == net.IABnodes(i+1).ID));
-%          
-%          idxUL = intersect(...
-%             find(net.Topology.Edges.EndNodes(:,2) > Ue_Num ),...
-%             find(net.Topology.Edges.EndNodes(:,1) == net.IABnodes(i+1).ID));
-        
-         idxDL = find(ismember(net.Topology.Edges.EndNodes, [connected_gNB, IABnode_ID],'rows'));
-         idxUL = find(ismember(net.Topology.Edges.EndNodes, [IABnode_ID, connected_gNB],'rows'));
-         
-         
-        if isnan(net.IABnodes(i+1).UE.BS_con_id) 
-            IAB_database(iter,i*5+1) = 0;
-        else
-            IAB_database(iter,i*5+1) = net.IABnodes(i+1).UE.BS_con_id;          % Connected BS
-        end
-        
-        if isnan(net.Topology.Edges.Capacity(idxDL))
-            IAB_database(iter,i*5+2) = 0;
-        else
-            IAB_database(iter,i*5+2) = net.Topology.Edges.Capacity(idxDL);      % DL_app
-        end
-        
-        if isnan(net.Topology.Edges.CQI(idxDL))
-            IAB_database(iter,i*5+3) = 0;
-        else
-            IAB_database(iter,i*5+3) = net.Topology.Edges.CQI(idxDL);           % DL_CQI
-        end
-        
-        if isnan(net.Topology.Edges.Capacity(idxUL))
-            IAB_database(iter,i*5+4) = 0;
-        else
-            IAB_database(iter,i*5+4) = net.Topology.Edges.Capacity(idxUL);      % UL_app
-        end
-        
-        if isnan(net.Topology.Edges.CQI(idxUL))
-            IAB_database(iter,i*5+5) = 0;
-        else
-            IAB_database(iter,i*5+5) = net.Topology.Edges.CQI(idxUL);           % UL_CQI
-        end
+            if isnan(net.Topology.Edges.Capacity(idxDL))
+                IAB_database(iter,index+2) = 0;
+            else
+                IAB_database(iter,index+2) = net.Topology.Edges.Capacity(idxDL);      % DL_app
+            end
+
+            if isnan(net.Topology.Edges.CQI(idxDL))
+                IAB_database(iter,index+3) = 0;
+            else
+                IAB_database(iter,index+3) = net.Topology.Edges.CQI(idxDL);           % DL_CQI
+            end
+
+            if isnan(net.Topology.Edges.Capacity(idxUL))
+                IAB_database(iter,index+4) = 0;
+            else
+                IAB_database(iter,index+4) = net.Topology.Edges.Capacity(idxUL);      % UL_app
+            end
+
+            if isnan(net.Topology.Edges.CQI(idxUL))
+                IAB_database(iter,index+5) = 0;
+            else
+                IAB_database(iter,index+5) = net.Topology.Edges.CQI(idxUL);           % UL_CQI
+            end
+            
+         end
     end
     
-    % saving IABdonors database into IAB_database matrix
+    % saving IAB-Donors database into IAB_database matrix
     for i=0:IABdonor_Num -1
+        index = (i + IABnode_num*max_bachaul_num)*5;
          idxDL = intersect(...
             find(net.Topology.Edges.EndNodes(:,2) <= Ue_Num ),...
             find(net.Topology.Edges.EndNodes(:,1) == net.IABdonors(i+1).ID));
          idxUL = intersect(...
             find(net.Topology.Edges.EndNodes(:,1) <= Ue_Num ),...
             find(net.Topology.Edges.EndNodes(:,2) == net.IABdonors(i+1).ID));
-        IAB_database(iter,(i + IABnode_num)*5+1) = -1;          % Connected BS
+        IAB_database(iter,index+1) = -1;          % Connected BS
         if isnan(sum(net.Topology.Edges.Capacity(idxDL))) 
-            IAB_database(iter,(i + IABnode_num)*5+2) = 0;
+            IAB_database(iter,index+2) = 0;
         else
-            IAB_database(iter,(i + IABnode_num)*5+2) = sum(net.Topology.Edges.Capacity(idxDL));         % DL_app
+            IAB_database(iter,index+2) = sum(net.Topology.Edges.Capacity(idxDL));         % DL_app
         end
         
         if isnan(floor(mean(net.Topology.Edges.CQI(idxDL))))
-            IAB_database(iter,(i + IABnode_num)*5+3) = 0;
+            IAB_database(iter,index+3) = 0;
         else
-            IAB_database(iter,(i + IABnode_num)*5+3) = floor(mean(net.Topology.Edges.CQI(idxDL)));      % DL_CQI
+            IAB_database(iter,index+3) = floor(mean(net.Topology.Edges.CQI(idxDL)));      % DL_CQI
         end
         
         if isnan(sum(net.Topology.Edges.Capacity(idxUL)))
-            IAB_database(iter,(i + IABnode_num)*5+4) = 0;
+            IAB_database(iter,index+4) = 0;
         else
-            IAB_database(iter,(i + IABnode_num)*5+4) = sum(net.Topology.Edges.Capacity(idxUL));         % UL_app
+            IAB_database(iter,index+4) = sum(net.Topology.Edges.Capacity(idxUL));         % UL_app
         end
         
         if isnan(floor(mean(net.Topology.Edges.CQI(idxUL))))
-            IAB_database(iter,(i + IABnode_num)*5+5) = 0;
+            IAB_database(iter,index+5) = 0;
         else
-            IAB_database(iter,(i + IABnode_num)*5+5) = floor(mean(net.Topology.Edges.CQI(idxUL)));      % UL_CQI
+            IAB_database(iter,index+5) = floor(mean(net.Topology.Edges.CQI(idxUL)));      % UL_CQI
         end
     end
     
@@ -322,49 +318,12 @@ for iter = 1:MaxIterations
 end
 
 %% Save database as table
-% Generate UE database labels
+
 if GenerateDatabase
-UE_database_labels = [];
-    for  i=1:Ue_Num
-        str_0 = ['UE', num2str(i),'-Con_BS '];
-        str_1 = ['UE', num2str(i),'-DL_app '];
-        str_2 = ['UE', num2str(i),'-DL_CQI '];
-        str_3 = ['UE', num2str(i),'-UL_app '];
-        str_4 = ['UE', num2str(i),'-UL_CQI '];
-        UE_database_labels = [UE_database_labels,str_0, str_1,str_2,str_3,str_4];
-    end
-    UE_database_labels = split(UE_database_labels);
-    UE_database_labels = UE_database_labels(1:end-1).';
-
-    % Convert database matrix to table
-    UE_database_Table = table(UE_database);
-    UE_database_Table = splitvars(UE_database_Table);
-    UE_database_Table.Properties.VariableNames = UE_database_labels;
-
-% Generate IAB database labels
-IAB_database_labels = [];
-    for  i=1:IABnode_num + IABdonor_Num
-        str_0 = ['IAB', num2str(i + Ue_Num),'-Con_BS '];
-        str_1 = ['IAB', num2str(i+Ue_Num),'-DL_app '];
-        str_2 = ['IAB', num2str(i+Ue_Num),'-DL_CQI '];
-        str_3 = ['IAB', num2str(i+Ue_Num),'-UL_app '];
-        str_4 = ['IAB', num2str(i+Ue_Num),'-UL_CQI '];
-        IAB_database_labels = [IAB_database_labels,str_0, str_1,str_2,str_3,str_4];
-    end
-    IAB_database_labels = split(IAB_database_labels);
-    IAB_database_labels = IAB_database_labels(1:end-1).';
-
-    % Convert database matrix to table
-    IAB_database_Table = table(IAB_database);
-    IAB_database_Table = splitvars(IAB_database_Table);
-    IAB_database_Table.Properties.VariableNames = IAB_database_labels;
-
-    %Save to csv file
-    disp('Saving data into csv file...')
-    writetable(UE_database_Table,'UE_database.csv')  
-    writetable(IAB_database_Table,'IAB_database.csv')  
-    disp('Done')
-
+    save_obj = saving;
+    save_obj = save_obj.set(UE_database, IAB_database);
+    save_obj.UE_Table;
+    save_obj.IAB_Table;
 end
 
 
