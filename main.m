@@ -20,13 +20,18 @@ IAB_backhaul_method = 2;    % 0 -   Direct connection to the IAB-Donor
                             % 1 -   Multi hop to the IAB-Donor
                             % 2 -   Mesh conectivity / multipule backhaul
                             %       connections
+load_scenario = 0;          % 0 - False. Synthesize new random scanerio 
+                            %     (and save them)
+                            % 1 - True. Load from exist database
 GenerateDatabase = 1; 
 GenerateGraphData = 1;
 
 %% Iteration's number
 % MaxScenarios = 10000;
 % MaxScenarios = 1000;
-MaxScenarios = 10;
+MaxScenarios = 1;
+
+TimeSlotsInScenario = 10;
 
 %% Simulation Parameters:
 IABnode_num = 9;
@@ -74,9 +79,15 @@ save_obj = saving;
 save_obj = save_obj.set(UE_database, IAB_database);
 tic
 for scenario = 1:MaxScenarios
-
-    [net] = Create_Random_Network();
-    TimeSlotsInScenario = 10;
+    
+    if load_scenario
+        load(['scenarios/scenarion_',num2str(scenario),'.mat'], 'net')
+    else
+        [net] = Create_Random_Network();
+        save(['scenarios/scenarion_',num2str(scenario),'.mat'], 'net');
+    end
+    
+    
     
     for slot = 1:TimeSlotsInScenario     
         net_scenario = Random_Datapath(net, UnitNum);
@@ -85,10 +96,8 @@ for scenario = 1:MaxScenarios
 
         %% Save data
         table_row = (scenario-1)*TimeSlotsInScenario + slot;
-        % saving UE database into UE_database matrix
-        save_obj = save_obj.update_ue(net_scenario, table_row);
-        % saving IAB-Nodes database into IAB_database matrix
-        save_obj = save_obj.update_iab(net_scenario, table_row);
+        save_obj = save_obj.update_ue(net_scenario, table_row); % saving UE database into UE_database matrix
+        save_obj = save_obj.update_iab(net_scenario, table_row); % saving IAB-Nodes database into IAB_database matrix
 
         % Saving IAB-nodes Graph Data
         if GenerateGraphData
@@ -100,7 +109,6 @@ for scenario = 1:MaxScenarios
             disp(['complete iteration: ', num2str(table_row),', time = ',num2str(toc)] )
         end
     end
-    
 end
 
 %% Save database as table

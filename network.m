@@ -297,12 +297,12 @@ classdef network
 %             obj.Topology.Edges.Capacity = obj.Topology.Edges.Capacity + sum(double(data_capacity_matrix),2); 
        end
        
-              %% Update wights
+       %% Update wights
        function obj = update_weights(obj)
            obj.Topology.Edges.Weight = obj.Topology.Edges.SNR_delay + obj.Topology.Edges.queue_delay;
        end
        
-              %% branch capacity calculation
+       %% branch capacity calculation
        function obj = Random_Datapath(obj,UnitNum)
            % This function find all the paths from the senders to recivers
            % and update the load on the Graph Object on the Topology field 
@@ -350,15 +350,27 @@ classdef network
                obj.Topology.Edges.Capacity(ai) = obj.Topology.Edges.Capacity(ai) + DataMatrix(Senders(link),Recivers(link));
                
                % add queue
-               allocate_BW = 50e6;  %Hz
+               allocate_BW = obj.Topology.Edges.allocate_BW(ai);  %Hz TotalBW=550e6, num_of_links=110*2
                RB_BW = 180e3;       % Hz
                num_RB = allocate_BW/RB_BW;
                packet_size = 100e3; %[bps]
                massage_size = obj.Topology.Edges.Capacity(ai) * 1e6; % [bps] 
                queue_length = massage_size / packet_size;
-               obj.Topology.Edges.queue_delay(ai) = obj.Topology.Edges.queue_delay(ai) + queue_length/num_RB;
+               obj.Topology.Edges.queue_delay(ai) = obj.Topology.Edges.queue_delay(ai) + queue_length./num_RB;
                obj = update_weights(obj);
             end
+       end
+       
+       %% set resource allocation
+       function obj = set_resource_allocation(obj, method)
+           switch method
+               case 'fair'
+                   allocate_BW = 2.5e6;  %Hz TotalBW=550e6, num_of_links=110*2
+                   allocate_BW = repmat(allocate_BW, size(obj.Topology.Edges(:,1),1),1);
+               case 'load'
+                   disp('load')
+           end
+           obj.Topology.Edges.allocate_BW = allocate_BW;
        end
    end
 end

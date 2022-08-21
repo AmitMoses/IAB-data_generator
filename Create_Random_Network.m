@@ -117,7 +117,7 @@ function [net] = Create_Random_Network()
         plot_network_topology(net);
     end
     
-    %% Data Transfer
+    % Topology
     [~, net.Topology] = network_topology(net);
     for UE_idx=1:Ue_Num
         % UE hops from BS
@@ -125,5 +125,7 @@ function [net] = Create_Random_Network()
         hops = length(path_to_BS) - 1;
         net.users(UE_idx).hops = hops;
     end
+    
+    net = set_resource_allocation(net, 'fair');
 end
 
